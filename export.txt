@@ -1,0 +1,1 @@
+export DATABASE_URL=postgres://matsuo:masanobu@localhost:5432/emr_sample

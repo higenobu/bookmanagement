@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: matsuo
+      POSTGRES_PASSWORD: masanobu
+      POSTGRES_DB: emr_sample
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matsuo -d emr_sample"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://matsuo:masanobu@db:5432/emr_sample"
+    ports:
+      - "8050:8050"
+    volumes:
+      - ./:/app                # mount project into container so edits on host are reflected
+    restart: unless-stopped
+
+volumes:
+  db_data:
