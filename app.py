@@ -641,8 +641,16 @@ def debug_last_dash_request():
 app.clientside_callback(
     """
     function(dropdown_value, clear_n, options_state) {
-        // If clear button clicked, clear selection
-        if (clear_n && typeof clear_n === 'number') {
+        // Clear only on the click itself. Testing `clear_n` alone is wrong: n_clicks
+        // stays >= 1 for the rest of the session, so every later dropdown change
+        // would take this branch and pin the store to [] forever.
+        var ctx = (window.dash_clientside && window.dash_clientside.callback_context) || {};
+        var triggered = ctx.triggered || [];
+        var firedByClear = triggered.some(function(t) {
+            return t && typeof t.prop_id === 'string' &&
+                   t.prop_id.indexOf('books-clear-btn.') === 0;
+        });
+        if (firedByClear) {
             try { window.__books_selected_cache = []; } catch(e) {}
             return [];
         }
@@ -847,6 +855,28 @@ def update_search_store_combined(title_val, author_val, clear_n, current_store):
     except Exception:
         server.logger.exception("Error updating search-store (combined)")
         return current_store or {"title": "", "author": "", "last_input_ts": 0}
+
+@app.callback(
+    Output('search-title', 'value'),
+    Output('search-author', 'value'),
+    Output('books-dropdown', 'value'),
+    Input('books-clear-btn', 'n_clicks'),
+    prevent_initial_call=True
+)
+def clear_search_form(clear_n):
+    """
+    Reset the whole search form when クリア is pressed: both search boxes and the
+    book selection.
+
+    Kept separate from update_search_store_combined: that callback already takes
+    both search values as Inputs, so writing them there would be a circular
+    dependency. Blanking them re-triggers it with empty values, which matches the
+    empty search-store it just wrote.
+
+    books-selected-store is deliberately NOT written here — the clientside callback
+    owns that property and already empties it on the same click.
+    """
+    return "", "", []
 '''
 @app.callback(
     Output('books-dropdown', 'options'),
@@ -1362,6 +1392,11 @@ def combined_confirm_or_table(rent_btn_clicks, confirm_clicks, cancel_clicks, ac
         else:
             raise dash.exceptions.PreventUpdate
 
+    except dash.exceptions.PreventUpdate:
+        # PreventUpdate subclasses Exception, so it must be re-raised ahead of the
+        # catch-all below. Otherwise a deliberate no-op (clicking a non-action cell)
+        # is reported to the user as an error.
+        raise
     except Exception:
         server.logger.exception("Error in combined confirm/table callback")
         return "エラーが発生しました", "エラーが発生しました", no_update, {'display': 'none'}

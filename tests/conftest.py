@@ -89,8 +89,12 @@ def test_database_url():
 
     # Try to initialize schema via application helper if available
     try:
-        from app import ensure_tables  # noqa: WPS433,F401
-        ensure_tables()
+        import app as _app_mod  # noqa: WPS433
+
+        # app.py snapshots DATABASE_URL into a module global at import time, and a
+        # test module may already have imported it, so redirect the attribute too.
+        _app_mod.DATABASE_URL = test_url
+        _app_mod.ensure_tables()
     except ImportError:
         # No ensure_tables available — tests must set up schema themselves or use existing DB
         pass
@@ -154,3 +158,38 @@ def db_conn(test_database_url):
         except Exception:
             pass
         conn.close()
+
+
+@pytest.fixture(scope="function")
+def app_module(test_database_url, monkeypatch):
+    """
+    Import app.py and pin its module-level DATABASE_URL to the test database.
+
+    app.py snapshots DATABASE_URL at import time, so patching the attribute (not
+    just the env var) is what actually redirects get_db_conn() at test time.
+    """
+    import app as app_mod
+
+    monkeypatch.setattr(app_mod, "DATABASE_URL", test_database_url)
+    return app_mod
+
+
+@pytest.fixture(scope="function")
+def clean_db(app_module, test_database_url):
+    """Truncate application tables before each test so cases stay independent."""
+    conn = psycopg2.connect(test_database_url)
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("TRUNCATE rent, books, users RESTART IDENTITY CASCADE;")
+    finally:
+        conn.close()
+    return app_module
+
+
+@pytest.fixture(scope="function")
+def client(clean_db):
+    """Flask test client bound to the test database."""
+    clean_db.server.config.update(TESTING=True)
+    with clean_db.server.test_client() as c:
+        yield c
