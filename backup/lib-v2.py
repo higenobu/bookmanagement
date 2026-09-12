@@ -16,7 +16,7 @@ from dash.dependencies import Input, Output, State
 # -----------------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------------
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://myuser:secret@localhost:5432/mydb")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://xxxr:xxxxt@localhost:5432/mydb")
 SECRET_KEY = os.environ.get("FLASK_SECRET", "dev-secret-change-me")
 
 # -----------------------------------------------------------------------------
